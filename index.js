@@ -1,10 +1,7 @@
 //Create links to npm packages, set port
-const mysql = require('mysql2');
-const inquirer = require('inquirer');
-const express = require("express");
+const mysql = require('mysql2')
+const inquirer = require('inquirer')
 const cTable = require('console.table')
-const app = express()
-const PORT = process.env.PORT || 3000
 
 //Create connection to databases
 const db = mysql.createConnection(
@@ -14,32 +11,36 @@ const db = mysql.createConnection(
         password: 'password',
         database: 'company_db',
     },
-    console.log(`Connected to the registar_db database.`)
+    console.log(`Connected to the company_db database.`)
 );
 
 //Create arrays for roles and managers for later use 
 const departmentArr = []
-const roleArr = []
-const epmloyeesArr = []
+const rolesArr = []
+const employeesArr = []
 let getRoles = () => {
-    db.query(`SELECT * FROM roles;`, (err, res) =>{
+    rolesArr.length = 0
+    db.query(`SELECT * FROM roles;`, (err, res) => {
         if (err) throw err
         for (let i = 0; i < res.length; i++) {
-          roleArr.push(res[i].title);
-        }})
-}
-let getEmployees = () =>{
-    db.query('SELECT CONCAT (employees.first_name," ",employees.last_name) AS full_name;', (err,res)=>{
-        if (err) throw err
-        for (let i = 0; i < res.length; i++){
-            managerArr.push(res[i].full_name)
+            rolesArr.push(res[i].title);
         }
     })
 }
-let getDepartments = ()=>{
-    db.query("SELECT * FROM departments;", (err,res)=>{
-        if(err) throw err
-        for (let i = 0; i < res.length; i++){
+let getEmployees = () => {
+    employeesArr.length = 0
+    db.query('SELECT * FROM employees;', (err, res) => {
+        if (err) throw err
+        for (let i = 0; i < res.length; i++) {
+            employeesArr.push(res[i].first_name)
+        }
+    })
+}
+let getDepartments = () => {
+    departmentArr.length = 0
+    db.query("SELECT * FROM departments;", (err, res) => {
+        if (err) throw err
+        for (let i = 0; i < res.length; i++) {
             departmentArr.push(res[i].name)
         }
     })
@@ -60,6 +61,7 @@ const main = () => {
                 "Add Role",
                 "View All Departments",
                 "Add Department",
+                "Delete",
                 "Quit",
             ],
         },
@@ -87,6 +89,9 @@ const main = () => {
                 case "Add Department":
                     addDepartment();
                     break;
+                case "Delete":
+                    deletion();
+                    break
                 default:
                     console.log("Thank you for using Employee Tracker. Goodbye");
                     process.exit();
@@ -97,18 +102,37 @@ const main = () => {
 
 //Next 3 are functions to view all employees, roles and departments. Wouldn't normally add the option, but example video shows departments sorted alphabetically so add that in as well as an inquirer choice, might add it to the other 2 for conformity
 const viewAllEmployees = () => {
+    // inquirer.prompt([{
+    //     tpye: 'list',
+    //     message: "How do you want to view all employees?",
+    //     name: "viewHow",
+    //     choices: ["Without filters", "View by manager", "View by department"]
+    // }]).then(ans => {
+    //     if (ans.viewHow === "Without filters"){
     db.query("SELECT employees.id, employees.first_name, employees.last_name, roles.title, roles.salary, departments.name, CONCAT(e.first_name, ' ' ,e.last_name) AS Manager FROM employees JOIN roles on roles.id = employees.roles_id JOIN departments on departments.id = roles.departments_id left join employees e on employees.manager_id = e.id;", (err, data) => {
         if (err) {
             throw err;
         } else {
             console.table(data);
             main()
+            //         }
+            //     })
+            // } else if (ans.viewHow === "View by manager") {
+            //     inquirer.prompt({
+            //         tpye: 'list',
+            //         message: "Which manager would you like to filter by?",
+            //         name:"filterManager",
+            //         choices:
         }
-    });
+    })
+
+    // })
+
+
 }
 
 const viewAllRoles = () => {
-    db.query('SELECT * FROM roles;', (err, data) => {
+    db.query('SELECT roles.id, roles.title, roles.salary FROM roles;', (err, data) => {
         if (err) {
             throw err;
         } else {
@@ -152,28 +176,73 @@ const viewAllDepartments = () => {
 }
 
 //Updating employee role
-const updateEmployeeRole = () => {
-inquirer.prompt([{
-    type: 'list',
-    message: "Which employee's role would you like to update?",
-    name: 'updateName',
-    choices: managerArr
-},{
-    type: 'list',
-    message: "Which role would you like to assign to selected employee?",
-    name: "updateNewRole",
-    choices: roleArr
-}]).then(ans =>{
-    let roleID = 
-db.query(`UPDATE employees SET employees.roles_id=(SELECT  `)
-    console.log("Updated employee's role")
-    main()
-})
+async function updateEmployeeRole() {
+    inquirer.prompt([{
+        type: 'list',
+        message: "Which employee's role would you like to update?",
+        name: 'updateName',
+        choices: employeesArr
+    }, {
+        type: 'list',
+        message: "Which role would you like to assign to selected employee?",
+        name: "updateNewRole",
+        choices: rolesArr
+    },]).then(async (ans) => {
+        console.log(ans.updateName)
+        db.query("UPDATE employees SET ? WHERE ?", [
+            {
+                roles_id: await getRoleID('roles', ans.updateNewRole)
+            },
+            {
+                first_name: `${ans.updateName}`
+            }], (err, res) => {
+                if (err) throw err
+                console.log("Updated employee's role")
+                main()
+            })
+    })
+}
+
+//Functions to get department and role ID's
+const getDepartmentID = (table, data) => {
+    return new Promise((resolve, reject) => {
+        db.query(`SELECT id FROM ${table} WHERE name = '${data}';`, (err, results) => {
+            if (err) {
+                reject(err)
+            } else {
+                resolve(results[0].id)
+            }
+        })
+    })
+}
+
+const getRoleID = (table, data) => {
+    return new Promise((resolve, reject) => {
+        db.query(`SELECT id FROM ${table} WHERE title = '${data}';`, (err, results) => {
+            if (err) {
+                reject(err)
+            } else {
+                resolve(results[0].id)
+            }
+        })
+    })
+}
+
+//Function to get employee ID's
+const getEmployeeID = (table, data) => {
+    return new Promise((resolve, reject) => {
+        db.query(`SELECT id FROM ${table} WHERE first_name = '${data}';`, (err, results) => {
+            if (err) {
+                reject(err)
+            } else {
+                resolve(results[0].id)
+            }
+        })
+    })
 }
 
 //Next 3 add employee, role and department functions
-const addEmployee = () => {
-
+async function addEmployee() {
     inquirer.prompt([{
         type: 'input',
         message: "What is the employee's first name?",
@@ -186,21 +255,25 @@ const addEmployee = () => {
         type: 'list',
         message: "What is the employee's role?",
         name: 'addEmployeeRole',
-        choices: roleArr
+        choices: rolesArr
     }, {
-        input: 'list',
-        message: "Who is employee's manager?",
+        type: 'list',
+        message: "Who is the employee's manager?",
         name: 'addEmployeeManager',
-        choices: managerArr
-    }]).then(ans => {
-        db.query(`INSERT INTO employees (first_name, last_name, roles_id, manager_id) VALUES (?, ?, ?, ?) [${ans.addEmployeeFirst}, ${ans.addEmployeeLast}, (SELECT roles_id from roles WHERE roles.title=${ans.addEmployeeRole}), (SELECT employees.id FROM employees WHERE (employees.first_name, employees.last_name)=${ans.addEmployeeManager});`)
-        console.log(`Added ${ans.addEmployeeFirst} ${addEmployeeLast} to the database`)
-        main()
-        getEmployees()
+        choices: employeesArr
+    },
+    ]).then(async (ans) => {
+        db.query(`INSERT INTO employees (first_name, last_name, roles_id, manager_id) VALUES (?, ?, ?, ?);`,
+            [ans.addEmployeeFirst, ans.addEmployeeLast, await getRoleID("roles", ans.addEmployeeRole), await getEmployeeID("employees", ans.addEmployeeManager)], (err, res) => {
+                if (err) throw err
+                console.log(`Added ${ans.addEmployeeFirst} ${ans.addEmployeeLast} to the database`)
+                main()
+                getEmployees()
+            })
     })
 }
 
-const addRole = () => {
+async function addRole() {
     inquirer.prompt([{
         tpye: 'input',
         message: 'What is the name of the role?',
@@ -214,24 +287,79 @@ const addRole = () => {
         message: 'To which department does the role belong?',
         name: 'addRoleDepartment',
         choices: departmentArr
-    }]).then(ans => {
-        db.query(`INSERT INTO roles (title, salary, departments_id) VALUES (?, ?, ?) [${ans.addRoleName}, ${ans.addRoleSalary}, SELECT department.id FROM departments WHERE name=${ans.addRoleDepartment}];`)
-        console.log(`Added ${ans.addRoleName} to the database.`)
-        main()
-        getRoles()
+    },]).then(async (ans) => {
+        db.query(`INSERT INTO roles (title, salary, departments_id) VALUES (?, ?, ?)`, [ans.addRoleName, ans.addRoleSalary, `${await getDepartmentID("departments", ans.addRoleDepartment)}`], (err, res) => {
+            if (err) throw err
+            console.log(`Added ${ans.addRoleName} to the database.`)
+            main()
+            getRoles()
+        })
     })
 }
-
 const addDepartment = () => {
     inquirer.prompt({
         type: "input",
         message: "What is the name of the new department?",
         name: 'newDepartment'
     }).then(ans => {
-        db.query(`INSERT INTO departments (name) VALUES (?) [${ans.newDepartment}]`)
+        db.query(`INSERT INTO departments (name) VALUES (?);`, ans.newDepartment)
         console.log(`Added ${ans.newDepartment} to the database.`)
         main()
         getDepartments()
+    })
+}
+
+const deletion = () => {
+    inquirer.prompt({
+        type: "list",
+        message: "What would you like to delete?",
+        name: "deleteWhat",
+        choices: ["Department", "Role", "Employee"]
+    }).then(ans => {
+        if (ans.deleteWhat === 'Department') {
+            inquirer.prompt({
+                type: "list",
+                message: "Which department would you like to delete?",
+                name: "deleteDepartment",
+                choices: departmentArr
+            }).then(ans => {
+                console.table(ans.deleteDepartment)
+                db.query('DELETE FROM departments WHERE name=?;', `${ans.deleteDepartment}`, (err, res) => {
+                    if (err) throw err
+                    console.log(`Deleted ${ans.deleteDepartment} from the database.`)
+                    main()
+                    getDepartments()
+                })
+            })
+        } else if (ans.deleteWhat === "Role") {
+            inquirer.prompt({
+                type: "list",
+                message: "Which role would you like to delete?",
+                name: "deleteRole",
+                choices: rolesArr
+            }).then(ans => {
+                db.query('DELETE FROM roles WHERE title=?;', `${ans.deleteRole}`, (err, res) => {
+                    if (err) throw err
+                    console.log(`Deleted ${ans.deleteRole} from the database.`)
+                    main()
+                    getRoles()
+                })
+            })
+        } else {
+            inquirer.prompt({
+                type: "list",
+                message: "Which employee would you like to delete?",
+                name: "deleteEmployee",
+                choices: employeesArr
+            }).then(ans => {
+                db.query('DELETE FROM employees WHERE first_name=?;', `${ans.deleteEmployee}`, (err, res) => {
+                    if (err) throw err
+                    console.log(`Deleted ${ans.deleteEmployee} from the database.`)
+                    main()
+                    getEmployees()
+                })
+            })
+        }
     })
 }
 
@@ -239,4 +367,5 @@ getDepartments()
 getRoles()
 getEmployees()
 main()
+
 
